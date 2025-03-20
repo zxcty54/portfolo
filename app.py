@@ -26,22 +26,26 @@ if firebase_credentials:
 else:
     raise ValueError("🚨 FIREBASE_CREDENTIALS environment variable is missing!")
 
-# ✅ Function to Fetch Stock Price
+# ✅ Function to Fetch Stock Price with Correct Change Calculation
 def get_stock_price(stock):
     try:
-        if not stock.upper().endswith(".NS"):
-            stock += ".NS"
-        
+        stock = stock.lower()  # ✅ Convert to lowercase to match Firestore storage
+
+        if not stock.endswith(".ns"):
+            stock += ".ns"  # ✅ Ensure NSE format
+
         ticker = yf.Ticker(stock)
-        history_data = ticker.history(period="1d")
+        history_data = ticker.history(period="2d")  # ✅ Fetch last 2 days for correct previous close
 
         if history_data.empty:
             return {"price": 0, "change": 0, "prevClose": 0}
 
-        live_price = round(history_data["Close"].iloc[-1], 2)
+        live_price = round(history_data["Close"].iloc[-1], 2)  # ✅ Latest close price
         prev_close = round(history_data["Close"].iloc[-2], 2) if len(history_data) > 1 else live_price
+
+        # ✅ Correct % Change Calculation (Using Previous Close)
         change = round(((live_price - prev_close) / prev_close) * 100, 2) if prev_close else 0
-        
+
         return {"price": live_price, "change": change, "prevClose": prev_close}
     
     except Exception as e:
@@ -51,7 +55,7 @@ def get_stock_price(stock):
 def update_stock_prices():
     while True:
         try:
-            stocks = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"]  # ✅ Modify as needed
+            stocks = ["reliance.ns", "tcs.ns", "infy.ns", "hdfcbank.ns", "icicibank.ns"]  # ✅ Lowercase stock names
             stock_data = {stock: get_stock_price(stock) for stock in stocks}
 
             for stock, data in stock_data.items():
@@ -71,9 +75,11 @@ threading.Thread(target=update_stock_prices, daemon=True).start()
 def home():
     return "✅ Stock Price API is Running!"
 
+# ✅ Get Stock Price (Allows Any Case in URL)
 @app.route("/get_price/<stock>", methods=["GET"])
 def get_price(stock):
     try:
+        stock = stock.lower()  # ✅ Convert to lowercase for Firestore lookup
         doc_ref = db.collection("live_prices").document(stock).get()
         if doc_ref.exists:
             return jsonify(doc_ref.to_dict())
@@ -82,11 +88,12 @@ def get_price(stock):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ✅ Get Multiple Stock Prices (Allows Any Case in JSON Input)
 @app.route("/get_prices", methods=["POST"])
 def get_prices():
     try:
         data = request.get_json()
-        stocks = data.get("stocks", [])
+        stocks = [s.lower() for s in data.get("stocks", [])]  # ✅ Convert all to lowercase
         prices = {}
 
         for stock in stocks:
