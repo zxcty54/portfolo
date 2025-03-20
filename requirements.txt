@@ -1,0 +1,5 @@
+flask
+yfinance
+gunicorn
+flask-cors
+firebase-admin
