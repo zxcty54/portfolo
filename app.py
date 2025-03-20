@@ -5,15 +5,23 @@ import os
 import json
 import threading
 import time
+import base64
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 app = Flask(__name__)
 CORS(app)
 
-# Initialize Firebase
+# 🔹 Decode Firebase JSON from Base64 (Render doesn't support JSON env vars)
 firebase_json = os.getenv("FIREBASE_CONFIG")
-firebase_credentials = json.loads(firebase_json)
+
+if not firebase_json:
+    raise ValueError("FIREBASE_CONFIG environment variable is not set. Please add it in Render.")
+
+decoded_json = base64.b64decode(firebase_json).decode("utf-8")
+firebase_credentials = json.loads(decoded_json)
+
+# 🔹 Initialize Firebase
 cred = credentials.Certificate(firebase_credentials)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
@@ -35,36 +43,25 @@ def get_stock_price(stock):
     except Exception as e:
         return str(e)
 
-# Function to fetch stock symbols from Firebase
-def get_stock_symbols():
-    """Fetch stock symbols from Firebase Firestore."""
-    try:
-        stocks_ref = db.collection("market_indices")  # Adjust collection name if needed
-        docs = stocks_ref.stream()
-        return [doc.id for doc in docs]  # Return list of stock symbols
-    except Exception as e:
-        print("Error fetching stocks from Firestore:", str(e))
-        return []
-
-# Function to update stock prices in Firestore
-def update_firestore_prices():
-    """Fetch latest stock prices and update Firestore."""
-    try:
-        stocks = get_stock_symbols()  # Get only the required stocks
-        for stock in stocks:
-            price = get_stock_price(stock)
-            db.collection("market_indices").document(stock).update({"price": price})
-        print("Stock prices updated in Firestore ✅")
-    except Exception as e:
-        print("Error updating Firestore:", str(e))
-
-# Background thread to update stock prices every 3 minutes
-def scheduled_price_updates():
+# 🔹 Update stock prices in Firestore every 3 minutes
+def update_stock_prices():
     while True:
-        update_firestore_prices()
-        time.sleep(180)  # Update every 3 minutes
+        try:
+            stocks_ref = db.collection("stocks")  # Collection: "stocks"
+            docs = stocks_ref.stream()
 
-# API to return requested stock prices from Firestore
+            for doc in docs:
+                stock = doc.id  # Stock symbol (document ID)
+                price = get_stock_price(stock)
+                stocks_ref.document(stock).set({"price": price, "updated_at": firestore.SERVER_TIMESTAMP}, merge=True)
+
+            print("✅ Stock prices updated in Firebase!")
+        except Exception as e:
+            print("❌ Error updating stock prices:", str(e))
+
+        time.sleep(180)  # 🔹 Update every 3 minutes
+
+# 🔹 API to get stock prices from Firebase
 @app.route("/get_prices", methods=["POST"])
 def get_prices():
     try:
@@ -73,19 +70,18 @@ def get_prices():
         prices = {}
 
         for stock in stocks:
-            doc_ref = db.collection("market_indices").document(stock)
-            doc = doc_ref.get()
-            if doc.exists:
-                prices[stock] = doc.to_dict().get("price", "N/A")
+            stock_doc = db.collection("stocks").document(stock).get()
+            if stock_doc.exists:
+                prices[stock] = stock_doc.to_dict().get("price", "Not Available")
             else:
-                prices[stock] = "Not Found"
+                prices[stock] = "Stock Not Found in Firestore"
 
         return jsonify(prices)
     except Exception as e:
         return jsonify({"error": str(e)})
 
-# Start background thread for automatic updates
-thread = threading.Thread(target=scheduled_price_updates, daemon=True)
+# 🔹 Start background thread to update prices
+thread = threading.Thread(target=update_stock_prices, daemon=True)
 thread.start()
 
 if __name__ == '__main__':
