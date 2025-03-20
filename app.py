@@ -13,10 +13,10 @@ app = Flask(__name__)
 CORS(app)
 
 # 🔹 Decode Firebase JSON from Base64 (Render doesn't support JSON env vars)
-firebase_json = os.getenv("FIREBASE_CONFIG")
+firebase_json = os.getenv("FIREBASE_CREDENTIALS") 
 
 if not firebase_json:
-    raise ValueError("FIREBASE_CONFIG environment variable is not set. Please add it in Render.")
+    raise ValueError("FIREBASE_CREDENTIALS environment variable is not set. Please add it in Render.")
 
 decoded_json = base64.b64decode(firebase_json).decode("utf-8")
 firebase_credentials = json.loads(decoded_json)
