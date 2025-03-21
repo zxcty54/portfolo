@@ -55,7 +55,9 @@ def get_stock_price(stock):
 def update_stock_prices():
     while True:
         try:
-            stocks = ["reliance.ns", "tcs.ns", "infy.ns", "hdfcbank.ns", "icicibank.ns"]  # ✅ Lowercase stock names
+            stock_list_ref = db.collection("live_prices").stream()
+            stocks = [doc.id for doc in stock_list_ref]  # ✅ Fetch stock symbols dynamically from Firestore
+            
             stock_data = {stock: get_stock_price(stock) for stock in stocks}
 
             for stock, data in stock_data.items():
@@ -88,23 +90,13 @@ def get_price(stock):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ✅ Get Multiple Stock Prices (Allows Any Case in JSON Input)
-@app.route("/get_prices", methods=["POST"])
+# ✅ Get Multiple Stock Prices (Fetches all stored stocks from Firestore)
+@app.route("/get_prices", methods=["GET"])
 def get_prices():
     try:
-        data = request.get_json()
-        stocks = [s.lower() for s in data.get("stocks", [])]  # ✅ Convert all to lowercase
-        prices = {}
-
-        for stock in stocks:
-            doc_ref = db.collection("live_prices").document(stock).get()
-            if doc_ref.exists:
-                prices[stock] = doc_ref.to_dict()
-            else:
-                prices[stock] = {"error": "Stock not found"}
-
+        stock_list_ref = db.collection("live_prices").stream()
+        prices = {doc.id: doc.to_dict() for doc in stock_list_ref}
         return jsonify(prices)
-    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
