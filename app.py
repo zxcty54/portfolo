@@ -68,7 +68,7 @@ def update_stock_prices():
         except Exception as e:
             print("❌ Error updating stock prices:", str(e))
 
-        time.sleep(180)  # ✅ Update every 3 minutes
+        time.sleep(900)  # ✅ Update every 3 minutes
 
 # ✅ Start Background Thread
 threading.Thread(target=update_stock_prices, daemon=True).start()
